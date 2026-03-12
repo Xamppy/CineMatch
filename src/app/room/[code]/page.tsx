@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MovieCard } from "@/components/ui/movie-card";
 import { MatchAlert } from "@/components/ui/match-alert";
@@ -21,23 +21,42 @@ interface PoolMovie {
   overview: string | null;
 }
 
+/** Fisher-Yates shuffle (pure — returns a new array) */
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 export default function RoomSwipePage() {
   const params = useParams();
   const router = useRouter();
   const code = params.code as string;
+
+  // ── Core state ────────────────────────────────────────────────
   const [movies, setMovies] = useState<TMDBMovie[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Match state ───────────────────────────────────────────────
   const [newMatch, setNewMatch] = useState<Match | null>(null);
-  const [votedMovieIds, setVotedMovieIds] = useState<Set<number>>(new Set());
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [showRoulette, setShowRoulette] = useState(false);
 
+  // ── Guards ────────────────────────────────────────────────────
+  // Prevent handleSwipe from being called while an API call is in-flight
+  const swipingRef = useRef(false);
+  // Track whether the pool has already been fetched (no re-fetches)
+  const poolFetchedRef = useRef(false);
+
   const supabase = useMemo(() => createClient(), []);
 
-  // Fetch room and determine phase
+  // ── 1. Fetch room + already-voted IDs (once) ─────────────────
   useEffect(() => {
     async function fetchRoom() {
       const { data, error: roomError } = await supabase
@@ -59,31 +78,37 @@ export default function RoomSwipePage() {
       }
 
       setRoomId(data.id);
-
-      // Fetch already-voted movie IDs to filter them out
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        const { data: votes } = await supabase
-          .from("movie_votes")
-          .select("movie_id")
-          .eq("room_id", data.id)
-          .eq("user_id", user.id);
-
-        if (votes) {
-          setVotedMovieIds(new Set(votes.map((v) => v.movie_id)));
-        }
-      }
     }
     fetchRoom();
   }, [code, supabase, router]);
 
-  // Fetch movies from the room's pool (not trending)
+  // ── 2. Fetch pool movies ONCE when roomId is set ──────────────
   const fetchPoolMovies = useCallback(
     async (roomIdParam: string) => {
+      // Guard: only fetch once, ever
+      if (poolFetchedRef.current) return;
+      poolFetchedRef.current = true;
+
       try {
+        // Fetch already-voted movie IDs for this user
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        const votedIds = new Set<number>();
+        if (user) {
+          const { data: votes } = await supabase
+            .from("movie_votes")
+            .select("movie_id")
+            .eq("room_id", roomIdParam)
+            .eq("user_id", user.id);
+
+          if (votes) {
+            for (const v of votes) votedIds.add(v.movie_id);
+          }
+        }
+
+        // Fetch the pool
         const res = await fetch(
           `/api/rooms/movies?roomId=${roomIdParam}`,
         );
@@ -91,12 +116,12 @@ export default function RoomSwipePage() {
         const data = await res.json();
 
         if (data.movies) {
-          // Deduplicate by movie_id (both users may have added the same movie)
+          // Deduplicate by movie_id + filter out already-voted
           const seen = new Set<number>();
           const uniqueMovies: TMDBMovie[] = [];
 
           for (const m of data.movies as PoolMovie[]) {
-            if (!seen.has(m.movie_id) && !votedMovieIds.has(m.movie_id)) {
+            if (!seen.has(m.movie_id) && !votedIds.has(m.movie_id)) {
               seen.add(m.movie_id);
               uniqueMovies.push({
                 id: m.movie_id,
@@ -112,25 +137,18 @@ export default function RoomSwipePage() {
             }
           }
 
-          // Shuffle the movies for a better experience
-          for (let i = uniqueMovies.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [uniqueMovies[i], uniqueMovies[j]] = [
-              uniqueMovies[j],
-              uniqueMovies[i],
-            ];
-          }
-
-          setMovies(uniqueMovies);
+          // Shuffle once — this order is final for the session
+          setMovies(shuffle(uniqueMovies));
+          setCurrentIndex(0);
         }
       } catch (_err) {
         console.error("Failed to fetch pool movies");
-        setError("Error al cargar películas");
+        setError("Error al cargar peliculas");
       } finally {
         setLoading(false);
       }
     },
-    [votedMovieIds],
+    [supabase],
   );
 
   useEffect(() => {
@@ -139,7 +157,7 @@ export default function RoomSwipePage() {
     }
   }, [roomId, fetchPoolMovies]);
 
-  // Subscribe to matches in real-time
+  // ── 3. Subscribe to matches in real-time ──────────────────────
   useEffect(() => {
     if (!roomId) return;
 
@@ -199,16 +217,20 @@ export default function RoomSwipePage() {
     };
   }, [roomId, supabase]);
 
-  // Called by MovieCard AFTER its exit animation completes
+  // ── 4. Handle swipe — advance index, send vote (fire-and-forget) ──
   async function handleSwipe(direction: SwipeDirection) {
+    // Synchronous guard — prevent rapid double-fires
+    if (swipingRef.current) return;
+    swipingRef.current = true;
+
     const movie = movies[currentIndex];
-    if (!movie || !roomId) return;
+    if (!movie || !roomId) {
+      swipingRef.current = false;
+      return;
+    }
 
-    // Advance to next card
+    // Advance to next card IMMEDIATELY (before API call)
     setCurrentIndex((prev) => prev + 1);
-
-    // Track as voted
-    setVotedMovieIds((prev) => new Set(prev).add(movie.id));
 
     const vote = direction === "right" ? "like" : "dislike";
 
@@ -240,9 +262,23 @@ export default function RoomSwipePage() {
       }
     } catch (_err) {
       console.error("Vote failed");
+    } finally {
+      // Release guard after a short delay to let React re-render the new card
+      // This prevents the old card's exit animation from overlapping
+      setTimeout(() => {
+        swipingRef.current = false;
+      }, 100);
     }
   }
 
+  // ── Derived state ─────────────────────────────────────────────
+  const currentMovie = movies[currentIndex];
+  const nextMovie = movies[currentIndex + 1];
+  const progress = movies.length > 0
+    ? Math.round(((currentIndex) / movies.length) * 100)
+    : 0;
+
+  // ── Render ────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
@@ -259,50 +295,64 @@ export default function RoomSwipePage() {
     );
   }
 
-  const currentMovie = movies[currentIndex];
-  const nextMovie = movies[currentIndex + 1];
-
   return (
     <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] px-4">
       {currentMovie ? (
-        <div className="relative">
-          {/* Next card peeking underneath */}
-          {nextMovie && (
-            <div className="absolute inset-x-0 top-0 w-full max-w-sm mx-auto scale-[0.95] opacity-40 -z-10">
-              <div className="rounded-2xl overflow-hidden border border-primary/5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={getPosterUrl(nextMovie.poster_path, "w500")}
-                  alt=""
-                  className="w-full aspect-[2/3] object-cover"
-                  draggable={false}
-                />
-                <div className="absolute inset-0 bg-black/40" />
-              </div>
+        <div className="relative w-full max-w-sm mx-auto">
+          {/* Progress indicator */}
+          <div className="flex items-center justify-between mb-3 px-1">
+            <span className="text-xs text-text-muted">
+              {currentIndex + 1} / {movies.length}
+            </span>
+            <div className="flex-1 mx-3 h-1 rounded-full bg-surface-light overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-300 ease-out"
+                style={{ width: `${progress}%` }}
+              />
             </div>
-          )}
+            <span className="text-xs text-text-muted">{progress}%</span>
+          </div>
 
-          {/* Current card — key forces fresh instance per movie */}
-          <MovieCard
-            key={currentMovie.id}
-            movie={currentMovie}
-            onSwipe={handleSwipe}
-          />
+          <div className="relative">
+            {/* Next card peeking underneath */}
+            {nextMovie && (
+              <div className="absolute inset-x-0 top-0 w-full max-w-sm mx-auto scale-[0.95] opacity-40 -z-10">
+                <div className="rounded-2xl overflow-hidden border border-primary/5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={getPosterUrl(nextMovie.poster_path, "w500")}
+                    alt=""
+                    className="w-full aspect-[2/3] object-cover"
+                    draggable={false}
+                  />
+                  <div className="absolute inset-0 bg-black/40" />
+                </div>
+              </div>
+            )}
+
+            {/* Current card — key forces fresh instance per movie */}
+            <MovieCard
+              key={currentMovie.id}
+              movie={currentMovie}
+              onSwipe={handleSwipe}
+            />
+          </div>
         </div>
       ) : (
         <div className="text-center">
           <p className="text-text-muted">
             {movies.length === 0
-              ? "No hay películas en el pool de esta sala."
-              : "Ya votaste por todas las películas del pool."}
+              ? "No hay peliculas en el pool de esta sala."
+              : "Ya votaste por todas las peliculas del pool."}
           </p>
           <p className="text-text-muted text-sm mt-2">
-            ¡Revisa tus matches para ver las coincidencias!
+            Revisa tus matches para ver las coincidencias.
           </p>
           {allMatches.length > 1 && (
             <button
               onClick={() => setShowRoulette(true)}
               className="btn-primary mt-4 inline-flex items-center gap-2"
+              aria-label="Girar la ruleta de peliculas"
             >
               <Sparkles className="w-5 h-5" />
               Girar la ruleta

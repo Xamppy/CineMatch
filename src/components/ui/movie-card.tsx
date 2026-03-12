@@ -18,6 +18,8 @@ interface MovieCardProps {
 }
 
 const EXIT_X = 400;
+const SWIPE_THRESHOLD = 100;
+const VELOCITY_THRESHOLD = 500;
 
 export function MovieCard({ movie, onSwipe }: MovieCardProps) {
   const exitingRef = useRef(false);
@@ -29,8 +31,8 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
     [-EXIT_X, -200, 0, 200, EXIT_X],
     [0, 1, 1, 1, 0],
   );
-  const likeOpacity = useTransform(x, [0, 100], [0, 1]);
-  const nopeOpacity = useTransform(x, [-100, 0], [1, 0]);
+  const likeOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
+  const nopeOpacity = useTransform(x, [-SWIPE_THRESHOLD, 0], [1, 0]);
 
   async function triggerSwipe(direction: SwipeDirection) {
     if (exitingRef.current) return;
@@ -38,7 +40,7 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
     setExiting(true);
 
     const targetX = direction === "right" ? EXIT_X : -EXIT_X;
-    await animate(x, targetX, { duration: 0.3, ease: "easeIn" });
+    await animate(x, targetX, { duration: 0.25, ease: "easeIn" });
     onSwipe(direction);
   }
 
@@ -48,23 +50,29 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
   ) {
     if (exitingRef.current) return;
 
-    const threshold = 100;
     const velocity = info.velocity.x;
     const offset = info.offset.x;
 
-    if (offset > threshold || velocity > 500) {
+    if (offset > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
       triggerSwipe("right");
-    } else if (offset < -threshold || velocity < -500) {
+    } else if (
+      offset < -SWIPE_THRESHOLD ||
+      velocity < -VELOCITY_THRESHOLD
+    ) {
       triggerSwipe("left");
     }
   }
 
   return (
-    <div className="relative w-full max-w-sm mx-auto">
+    <div
+      className="relative w-full max-w-sm mx-auto"
+      role="group"
+      aria-label={`Pelicula: ${movie.title}`}
+    >
       {/* Draggable card */}
       <motion.div
-        className="relative cursor-grab active:cursor-grabbing"
-        style={{ x, rotate, opacity }}
+        className="relative cursor-grab active:cursor-grabbing select-none"
+        style={{ x, rotate, opacity, touchAction: "pan-y" }}
         drag={exiting ? false : "x"}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.9}
@@ -76,7 +84,7 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={getPosterUrl(movie.poster_path, "w500")}
-            alt={movie.title}
+            alt={`Poster de ${movie.title}`}
             className="w-full aspect-[2/3] object-cover"
             draggable={false}
           />
@@ -86,16 +94,18 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
 
           {/* LIKE stamp */}
           <motion.div
-            className="absolute top-6 left-6 border-4 border-success text-success font-bold text-3xl px-4 py-1 rounded-lg -rotate-12"
+            className="absolute top-6 left-6 border-4 border-success text-success font-bold text-3xl px-4 py-1 rounded-lg -rotate-12 pointer-events-none"
             style={{ opacity: likeOpacity }}
+            aria-hidden="true"
           >
             LIKE
           </motion.div>
 
           {/* NOPE stamp */}
           <motion.div
-            className="absolute top-6 right-6 border-4 border-danger text-danger font-bold text-3xl px-4 py-1 rounded-lg rotate-12"
+            className="absolute top-6 right-6 border-4 border-danger text-danger font-bold text-3xl px-4 py-1 rounded-lg rotate-12 pointer-events-none"
             style={{ opacity: nopeOpacity }}
+            aria-hidden="true"
           >
             NOPE
           </motion.div>
@@ -121,19 +131,21 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
         </div>
       </motion.div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons — min 48x48 for touch targets */}
       <div className="flex justify-center gap-8 mt-6">
         <button
           onClick={() => triggerSwipe("left")}
           disabled={exiting}
-          className="w-16 h-16 rounded-full bg-surface border-2 border-danger/30 flex items-center justify-center hover:bg-danger/10 hover:border-danger/60 transition-all active:scale-90 disabled:opacity-40 disabled:pointer-events-none"
+          aria-label={`Rechazar ${movie.title}`}
+          className="w-16 h-16 rounded-full bg-surface border-2 border-danger/30 flex items-center justify-center hover:bg-danger/10 hover:border-danger/60 transition-all duration-150 active:scale-90 disabled:opacity-40 disabled:pointer-events-none"
         >
           <X className="w-8 h-8 text-danger" />
         </button>
         <button
           onClick={() => triggerSwipe("right")}
           disabled={exiting}
-          className="w-16 h-16 rounded-full bg-surface border-2 border-success/30 flex items-center justify-center hover:bg-success/10 hover:border-success/60 transition-all active:scale-90 disabled:opacity-40 disabled:pointer-events-none"
+          aria-label={`Me gusta ${movie.title}`}
+          className="w-16 h-16 rounded-full bg-surface border-2 border-success/30 flex items-center justify-center hover:bg-success/10 hover:border-success/60 transition-all duration-150 active:scale-90 disabled:opacity-40 disabled:pointer-events-none"
         >
           <Heart className="w-8 h-8 text-success" />
         </button>

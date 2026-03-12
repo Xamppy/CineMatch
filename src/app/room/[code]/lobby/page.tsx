@@ -159,6 +159,20 @@ export default function LobbyPage() {
     init();
   }, [code, supabase, router]);
 
+  // Helper: check room status and redirect if swiping/completed
+  const checkAndRedirect = useCallback(async () => {
+    if (!roomId) return;
+    const { data } = await supabase
+      .from("rooms")
+      .select("status")
+      .eq("id", roomId)
+      .single();
+
+    if (data && (data.status === "swiping" || data.status === "completed")) {
+      router.replace(`/room/${code}`);
+    }
+  }, [roomId, supabase, code, router]);
+
   // Subscribe to realtime changes on room_members (ready status)
   // and room_movies (see when partner adds movies) and rooms (status change)
   useEffect(() => {
@@ -176,13 +190,18 @@ export default function LobbyPage() {
         },
         (payload) => {
           const updated = payload.new;
-          setMembers((prev) =>
-            prev.map((m) =>
+          setMembers((prev) => {
+            const next = prev.map((m) =>
               m.userId === updated.user_id
                 ? { ...m, isReady: updated.is_ready }
                 : m,
-            ),
-          );
+            );
+            // If all members are now ready, check room status and redirect
+            if (next.length >= 2 && next.every((m) => m.isReady)) {
+              checkAndRedirect();
+            }
+            return next;
+          });
         },
       )
       .on(
@@ -227,13 +246,15 @@ export default function LobbyPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomId, supabase, code, router]);
+  }, [roomId, supabase, code, router, checkAndRedirect]);
 
-  // Polling fallback: when user is ready, poll room status every 3s
-  // in case the realtime subscription on the rooms table does not fire
-  // (e.g. rooms table not yet added to the Supabase realtime publication).
+  // Polling fallback: always poll room status every 2s once we have a roomId.
+  // This catches cases where:
+  // 1. The rooms table realtime subscription doesn't fire
+  // 2. The room_members callback misses the transition window
+  // 3. The user refreshed the page after their partner readied up
   useEffect(() => {
-    if (!roomId || !isReady) return;
+    if (!roomId) return;
 
     const interval = setInterval(async () => {
       const { data } = await supabase
@@ -245,10 +266,10 @@ export default function LobbyPage() {
       if (data && (data.status === "swiping" || data.status === "completed")) {
         router.replace(`/room/${code}`);
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(interval);
-  }, [roomId, isReady, supabase, code, router]);
+  }, [roomId, supabase, code, router]);
 
   // Fetch recommendations
   const fetchRecommendations = useCallback(
