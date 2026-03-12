@@ -37,7 +37,7 @@ export default function RoomSwipePage() {
   const [showRoulette, setShowRoulette] = useState(false);
   const [isSwiping, setIsSwiping] = useState(false);
   const [exitDirection, setExitDirection] = useState<SwipeDirection>("left");
-  const swipeGuard = useRef(false);
+  const lastSwipeTime = useRef(0);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -207,9 +207,12 @@ export default function RoomSwipePage() {
     const movie = movies[currentIndex];
     if (!movie || !roomId) return;
 
-    // Guard against double-fire (drag + button, or rapid drags)
-    if (swipeGuard.current) return;
-    swipeGuard.current = true;
+    // Time-based guard: reject swipes within 400ms of the last one
+    const now = Date.now();
+    if (now - lastSwipeTime.current < 400) return;
+    if (isSwiping) return;
+
+    lastSwipeTime.current = now;
     setIsSwiping(true);
     setExitDirection(direction);
 
@@ -254,7 +257,6 @@ export default function RoomSwipePage() {
 
   function handleExitComplete() {
     setIsSwiping(false);
-    swipeGuard.current = false;
   }
 
   if (loading) {
@@ -307,7 +309,6 @@ export default function RoomSwipePage() {
                   key={currentMovie.id}
                   movie={currentMovie}
                   onSwipe={handleSwipe}
-                  isSwiping={isSwiping}
                 />
               )}
             </AnimatePresence>

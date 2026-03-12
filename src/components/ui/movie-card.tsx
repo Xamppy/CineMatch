@@ -9,16 +9,11 @@ import type { SwipeDirection } from "@/types";
 interface MovieCardProps {
   movie: TMDBMovie;
   onSwipe: (direction: SwipeDirection) => void;
-  isSwiping?: boolean;
 }
 
 const EXIT_X = 400;
 
-export function MovieCard({
-  movie,
-  onSwipe,
-  isSwiping,
-}: MovieCardProps) {
+export function MovieCard({ movie, onSwipe }: MovieCardProps) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-15, 0, 15]);
   const likeOpacity = useTransform(x, [0, 100], [0, 1]);
@@ -28,8 +23,6 @@ export function MovieCard({
     _: unknown,
     info: { offset: { x: number }; velocity: { x: number } },
   ) {
-    if (isSwiping) return;
-
     const threshold = 100;
     const velocity = info.velocity.x;
     const offset = info.offset.x;
@@ -42,10 +35,11 @@ export function MovieCard({
   }
 
   return (
+    // Outer layer: handles AnimatePresence exit/enter only — NO drag here
     <motion.div
-      className="absolute inset-0"
+      className="absolute inset-0 pointer-events-none"
       initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1, x: 0, rotate: 0 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit="exit"
       variants={{
         exit: (direction: SwipeDirection) => ({
@@ -56,62 +50,67 @@ export function MovieCard({
         }),
       }}
       transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
-      style={{ x, rotate }}
-      drag={isSwiping ? false : "x"}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.9}
-      onDragEnd={handleDragEnd}
-      whileTap={isSwiping ? undefined : { scale: 1.02 }}
     >
-      {/* Card */}
-      <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-primary/10 cursor-grab active:cursor-grabbing">
-        {/* Poster */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={getPosterUrl(movie.poster_path, "w500")}
-          alt={movie.title}
-          className="w-full aspect-[2/3] object-cover"
-          draggable={false}
-        />
+      {/* Inner layer: handles drag gesture — isolated from exit animation */}
+      <motion.div
+        className="h-full pointer-events-auto cursor-grab active:cursor-grabbing"
+        style={{ x, rotate }}
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.9}
+        onDragEnd={handleDragEnd}
+        whileTap={{ scale: 1.02 }}
+      >
+        {/* Card */}
+        <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-primary/10">
+          {/* Poster */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={getPosterUrl(movie.poster_path, "w500")}
+            alt={movie.title}
+            className="w-full aspect-[2/3] object-cover"
+            draggable={false}
+          />
 
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+          {/* Gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 
-        {/* LIKE stamp */}
-        <motion.div
-          className="absolute top-6 left-6 border-4 border-success text-success font-bold text-3xl px-4 py-1 rounded-lg -rotate-12"
-          style={{ opacity: likeOpacity }}
-        >
-          LIKE
-        </motion.div>
+          {/* LIKE stamp */}
+          <motion.div
+            className="absolute top-6 left-6 border-4 border-success text-success font-bold text-3xl px-4 py-1 rounded-lg -rotate-12"
+            style={{ opacity: likeOpacity }}
+          >
+            LIKE
+          </motion.div>
 
-        {/* NOPE stamp */}
-        <motion.div
-          className="absolute top-6 right-6 border-4 border-danger text-danger font-bold text-3xl px-4 py-1 rounded-lg rotate-12"
-          style={{ opacity: nopeOpacity }}
-        >
-          NOPE
-        </motion.div>
+          {/* NOPE stamp */}
+          <motion.div
+            className="absolute top-6 right-6 border-4 border-danger text-danger font-bold text-3xl px-4 py-1 rounded-lg rotate-12"
+            style={{ opacity: nopeOpacity }}
+          >
+            NOPE
+          </motion.div>
 
-        {/* Info */}
-        <div className="absolute bottom-0 left-0 right-0 p-5">
-          <h2 className="text-2xl font-bold text-white mb-1">
-            {movie.title}
-          </h2>
-          <div className="flex items-center gap-3 text-white/80">
-            <span>{movie.release_date?.split("-")[0]}</span>
-            <span className="flex items-center gap-1">
-              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-              {movie.vote_average?.toFixed(1)}
-            </span>
+          {/* Info */}
+          <div className="absolute bottom-0 left-0 right-0 p-5">
+            <h2 className="text-2xl font-bold text-white mb-1">
+              {movie.title}
+            </h2>
+            <div className="flex items-center gap-3 text-white/80">
+              <span>{movie.release_date?.split("-")[0]}</span>
+              <span className="flex items-center gap-1">
+                <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                {movie.vote_average?.toFixed(1)}
+              </span>
+            </div>
+            {movie.overview && (
+              <p className="text-white/60 text-sm mt-2 line-clamp-2">
+                {movie.overview}
+              </p>
+            )}
           </div>
-          {movie.overview && (
-            <p className="text-white/60 text-sm mt-2 line-clamp-2">
-              {movie.overview}
-            </p>
-          )}
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }
