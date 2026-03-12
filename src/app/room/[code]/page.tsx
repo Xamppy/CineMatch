@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MovieCard } from "@/components/ui/movie-card";
@@ -9,8 +9,19 @@ import type { TMDBMovie } from "@/lib/tmdb";
 import type { Match } from "@/types";
 import { Loader2 } from "lucide-react";
 
+interface PoolMovie {
+  movie_id: number;
+  movie_title: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  release_date: string | null;
+  vote_average: number | null;
+  overview: string | null;
+}
+
 export default function RoomSwipePage() {
   const params = useParams();
+  const router = useRouter();
   const code = params.code as string;
   const [movies, setMovies] = useState<TMDBMovie[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -18,17 +29,16 @@ export default function RoomSwipePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newMatch, setNewMatch] = useState<Match | null>(null);
-  const [page, setPage] = useState(1);
   const [votedMovieIds, setVotedMovieIds] = useState<Set<number>>(new Set());
 
   const supabase = useMemo(() => createClient(), []);
 
-  // Fetch room ID from code and get already-voted movies
+  // Fetch room and determine phase
   useEffect(() => {
     async function fetchRoom() {
       const { data, error: roomError } = await supabase
         .from("rooms")
-        .select("id")
+        .select("id, status")
         .eq("code", code)
         .single();
 
@@ -38,38 +48,79 @@ export default function RoomSwipePage() {
         return;
       }
 
+      // If room is still in lobby, redirect to lobby page
+      if (data.status === "lobby") {
+        router.replace(`/room/${code}/lobby`);
+        return;
+      }
+
       setRoomId(data.id);
 
       // Fetch already-voted movie IDs to filter them out
-      const { data: votes } = await supabase
-        .from("movie_votes")
-        .select("movie_id")
-        .eq("room_id", data.id);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (votes) {
-        setVotedMovieIds(new Set(votes.map((v) => v.movie_id)));
+      if (user) {
+        const { data: votes } = await supabase
+          .from("movie_votes")
+          .select("movie_id")
+          .eq("room_id", data.id)
+          .eq("user_id", user.id);
+
+        if (votes) {
+          setVotedMovieIds(new Set(votes.map((v) => v.movie_id)));
+        }
       }
     }
     fetchRoom();
-  }, [code, supabase]);
+  }, [code, supabase, router]);
 
-  // Fetch trending movies, filtering out already-voted ones
-  const fetchMovies = useCallback(
-    async (pageNum: number) => {
+  // Fetch movies from the room's pool (not trending)
+  const fetchPoolMovies = useCallback(
+    async (roomIdParam: string) => {
       try {
-        const res = await fetch(`/api/movies/trending?page=${pageNum}`);
-        if (!res.ok) throw new Error("Failed to fetch movies");
+        const res = await fetch(
+          `/api/rooms/movies?roomId=${roomIdParam}`,
+        );
+        if (!res.ok) throw new Error("Failed to fetch pool");
         const data = await res.json();
-        if (data.results) {
-          setMovies((prev) => {
-            const newMovies = (data.results as TMDBMovie[]).filter(
-              (m) => !votedMovieIds.has(m.id),
-            );
-            return [...prev, ...newMovies];
-          });
+
+        if (data.movies) {
+          // Deduplicate by movie_id (both users may have added the same movie)
+          const seen = new Set<number>();
+          const uniqueMovies: TMDBMovie[] = [];
+
+          for (const m of data.movies as PoolMovie[]) {
+            if (!seen.has(m.movie_id) && !votedMovieIds.has(m.movie_id)) {
+              seen.add(m.movie_id);
+              uniqueMovies.push({
+                id: m.movie_id,
+                title: m.movie_title,
+                poster_path: m.poster_path,
+                backdrop_path: m.backdrop_path,
+                release_date: m.release_date || "",
+                vote_average: m.vote_average ? Number(m.vote_average) : 0,
+                vote_count: 0,
+                genre_ids: [],
+                overview: m.overview || "",
+              });
+            }
+          }
+
+          // Shuffle the movies for a better experience
+          for (let i = uniqueMovies.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [uniqueMovies[i], uniqueMovies[j]] = [
+              uniqueMovies[j],
+              uniqueMovies[i],
+            ];
+          }
+
+          setMovies(uniqueMovies);
         }
-      } catch (err) {
-        console.error("Failed to fetch movies:", err);
+      } catch (_err) {
+        console.error("Failed to fetch pool movies");
         setError("Error al cargar películas");
       } finally {
         setLoading(false);
@@ -80,9 +131,9 @@ export default function RoomSwipePage() {
 
   useEffect(() => {
     if (roomId) {
-      fetchMovies(page);
+      fetchPoolMovies(roomId);
     }
-  }, [page, roomId, fetchMovies]);
+  }, [roomId, fetchPoolMovies]);
 
   // Subscribe to matches in real-time
   useEffect(() => {
@@ -127,11 +178,6 @@ export default function RoomSwipePage() {
     const nextIndex = currentIndex + 1;
     setCurrentIndex(nextIndex);
 
-    // Load more when running low
-    if (nextIndex >= movies.length - 3) {
-      setPage((p) => p + 1);
-    }
-
     // Track as voted
     setVotedMovieIds((prev) => new Set(prev).add(movie.id));
 
@@ -161,8 +207,8 @@ export default function RoomSwipePage() {
           matchedAt: new Date().toISOString(),
         });
       }
-    } catch (err) {
-      console.error("Vote failed:", err);
+    } catch (_err) {
+      console.error("Vote failed");
     }
   }
 
@@ -190,9 +236,13 @@ export default function RoomSwipePage() {
         <MovieCard movie={currentMovie} onSwipe={handleSwipe} />
       ) : (
         <div className="text-center">
-          <p className="text-text-muted">No hay más películas por ahora.</p>
+          <p className="text-text-muted">
+            {movies.length === 0
+              ? "No hay películas en el pool de esta sala."
+              : "Ya votaste por todas las películas del pool."}
+          </p>
           <p className="text-text-muted text-sm mt-2">
-            ¡Intenta buscar películas específicas!
+            ¡Revisa tus matches para ver las coincidencias!
           </p>
         </div>
       )}

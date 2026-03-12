@@ -9,10 +9,13 @@ export interface Movie {
   genreIds: number[];
 }
 
+export type RoomStatus = "lobby" | "swiping" | "completed";
+
 export interface Room {
   id: string;
   code: string;
   createdBy: string;
+  status: RoomStatus;
   createdAt: string;
 }
 
@@ -20,7 +23,22 @@ export interface RoomMember {
   id: string;
   roomId: string;
   userId: string;
+  isReady: boolean;
   joinedAt: string;
+}
+
+export interface RoomMovie {
+  id: string;
+  roomId: string;
+  userId: string;
+  movieId: number;
+  movieTitle: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  releaseDate: string | null;
+  voteAverage: number | null;
+  overview: string | null;
+  addedAt: string;
 }
 
 export interface MovieVote {

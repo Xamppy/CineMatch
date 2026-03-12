@@ -43,8 +43,18 @@ src/
 │   ├── globals.css             # Tailwind v4 @theme + component classes
 │   ├── auth/                   # Login, register, OAuth callback
 │   ├── dashboard/              # Room creation / join (protected)
-│   ├── room/[code]/            # Swiper, search, matches pages
-│   └── api/                    # Route Handlers (movies, rooms, votes)
+│   ├── room/[code]/            # Room pages (layout with phase-aware tabs)
+│   │   ├── layout.tsx          # Shared layout: header, status badge, bottom tabs
+│   │   ├── lobby/page.tsx      # Lobby phase: search & add movies, ready up
+│   │   ├── page.tsx            # Swipe phase: vote on pool movies
+│   │   ├── matches/page.tsx    # Matches list
+│   │   └── search/page.tsx     # Deprecated — redirects to lobby or swipe
+│   └── api/                    # Route Handlers
+│       ├── movies/             # search, trending, popular (TMDB proxy)
+│       ├── rooms/              # create, join
+│       │   ├── movies/         # GET/POST/DELETE room movie pool
+│       │   └── ready/          # POST toggle ready + lobby→swiping transition
+│       └── votes/              # POST vote + match detection
 ├── components/ui/              # Reusable UI components
 ├── lib/                        # Shared utilities & service clients
 │   ├── supabase/               # client.ts, server.ts, middleware.ts
@@ -52,7 +62,9 @@ src/
 ├── types/                      # Shared TypeScript type definitions
 └── middleware.ts                # Auth guard + session refresh
 supabase/
-└── schema.sql                  # Full DDL with RLS policies
+├── schema.sql                  # Full DDL with RLS policies (canonical)
+├── migration-fix-rls.sql       # RLS hotfix migration
+└── migration-lobby-feature.sql # Lobby feature migration (additive)
 ```
 
 ## Code Style
@@ -103,7 +115,7 @@ supabase/
 
 - NEVER call TMDB directly from client components. Proxy all requests through Route Handlers under `src/app/api/movies/` to keep the API key server-side.
 - `TMDB_API_KEY` is server-only (no `NEXT_PUBLIC_` prefix).
-- Use wrapper functions in `src/lib/tmdb.ts` (`searchMovies`, `getTrendingMovies`, `getMovieDetails`).
+- Use wrapper functions in `src/lib/tmdb.ts` (`searchMovies`, `getTrendingMovies`, `getPopularMovies`, `getTopRatedMovies`, `getMovieDetails`).
 
 ## Styling
 
@@ -124,7 +136,7 @@ All defined in `.env.local` (gitignored). Use `https://`-prefixed placeholder UR
 
 ## Database
 
-Full schema: `supabase/schema.sql`. Tables: `profiles`, `rooms`, `room_members`, `movie_votes`, `matches`. All tables have RLS enabled. Realtime is enabled on `matches` and `movie_votes`.
+Full schema: `supabase/schema.sql`. Tables: `profiles`, `rooms`, `room_members`, `room_movies`, `movie_votes`, `matches`. All tables have RLS enabled. Realtime is enabled on `matches`, `movie_votes`, `room_movies`, and `room_members`.
 
 ## Key Architecture Decisions
 
@@ -133,6 +145,8 @@ Full schema: `supabase/schema.sql`. Tables: `profiles`, `rooms`, `room_members`,
 3. **Voting:** Votes are upserted (unique on `room_id, user_id, movie_id`). Match detection is server-side in `/api/votes`.
 4. **Realtime:** Clients subscribe to `postgres_changes` on the `matches` table for instant match alerts.
 5. **TMDB Proxy:** All TMDB calls go through Route Handlers to keep the API key server-side.
+6. **Lobby Phase:** Rooms start in `lobby` status. Each user searches and adds movies to the pool (min 5). Both users must ready up to transition to `swiping`. Status transitions happen server-side in `/api/rooms/ready`.
+7. **Room Phases:** `lobby` → `swiping` → `completed`. The room layout dynamically switches tabs and shows a status badge. The search page is deprecated and redirects based on current phase.
 
 ## Known Caveats
 

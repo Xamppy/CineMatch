@@ -11,29 +11,37 @@ drop policy if exists "Users can update their own profile" on public.profiles;
 drop policy if exists "Rooms are viewable by members" on public.rooms;
 drop policy if exists "Authenticated users can create rooms" on public.rooms;
 drop policy if exists "Rooms are viewable by authenticated users" on public.rooms;
+drop policy if exists "Room members can update room status" on public.rooms;
 drop policy if exists "Room members can view other members" on public.room_members;
 drop policy if exists "Room members viewable by authenticated users" on public.room_members;
 drop policy if exists "Authenticated users can join rooms" on public.room_members;
+drop policy if exists "Users can update their own membership" on public.room_members;
 drop policy if exists "Users can view votes in their rooms" on public.movie_votes;
 drop policy if exists "Users can insert their own votes" on public.movie_votes;
 drop policy if exists "Users can update their own votes" on public.movie_votes;
 drop policy if exists "Users can view matches in their rooms" on public.matches;
 drop policy if exists "Users can insert matches in their rooms" on public.matches;
+drop policy if exists "Room members can view room movies" on public.room_movies;
+drop policy if exists "Authenticated users can add room movies" on public.room_movies;
+drop policy if exists "Users can remove their own room movies" on public.room_movies;
 
 -- Drop tables (order matters due to FKs)
 drop table if exists public.matches cascade;
 drop table if exists public.movie_votes cascade;
+drop table if exists public.room_movies cascade;
 drop table if exists public.room_members cascade;
 drop table if exists public.rooms cascade;
 drop table if exists public.profiles cascade;
 
 -- Drop custom types
 drop type if exists vote_type;
+drop type if exists room_status;
 
 -- ============================================
 -- 1. CUSTOM TYPES
 -- ============================================
 create type vote_type as enum ('like', 'dislike');
+create type room_status as enum ('lobby', 'swiping', 'completed');
 
 -- ============================================
 -- 2. TABLES (all tables first, then policies)
@@ -55,6 +63,7 @@ create table public.rooms (
   id uuid default gen_random_uuid() primary key,
   code text unique not null check (length(code) = 6),
   created_by uuid references public.profiles(id) on delete set null,
+  status room_status not null default 'lobby',
   created_at timestamptz default now() not null
 );
 
@@ -66,12 +75,32 @@ create table public.room_members (
   id uuid default gen_random_uuid() primary key,
   room_id uuid references public.rooms(id) on delete cascade not null,
   user_id uuid references public.profiles(id) on delete cascade not null,
+  is_ready boolean not null default false,
   joined_at timestamptz default now() not null,
   unique (room_id, user_id)
 );
 
 alter table public.room_members enable row level security;
 alter table public.room_members force row level security;
+
+-- ROOM MOVIES (lobby pool — movies added by users before swiping)
+create table public.room_movies (
+  id uuid default gen_random_uuid() primary key,
+  room_id uuid references public.rooms(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  movie_id integer not null,
+  movie_title text not null,
+  poster_path text,
+  backdrop_path text,
+  release_date text,
+  vote_average numeric(3,1),
+  overview text,
+  added_at timestamptz default now() not null,
+  unique (room_id, user_id, movie_id)
+);
+
+alter table public.room_movies enable row level security;
+alter table public.room_movies force row level security;
 
 -- MOVIE VOTES
 create table public.movie_votes (
@@ -140,6 +169,25 @@ create policy "Authenticated users can create rooms"
   on public.rooms for insert
   with check ((select auth.uid()) = created_by);
 
+-- Room members can update room status (lobby -> swiping -> completed)
+create policy "Room members can update room status"
+  on public.rooms for update
+  to authenticated
+  using (
+    exists (
+      select 1 from public.room_members
+      where room_members.room_id = rooms.id
+      and room_members.user_id = (select auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.room_members
+      where room_members.room_id = rooms.id
+      and room_members.user_id = (select auth.uid())
+    )
+  );
+
 -- ROOM MEMBERS policies
 -- Any authenticated user can view room memberships.
 -- Room codes are the access control mechanism. Membership UUIDs are not
@@ -154,6 +202,52 @@ create policy "Room members viewable by authenticated users"
 create policy "Authenticated users can join rooms"
   on public.room_members for insert
   with check ((select auth.uid()) = user_id);
+
+-- Users can update their own membership (e.g. set is_ready)
+create policy "Users can update their own membership"
+  on public.room_members for update
+  to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+-- ROOM MOVIES policies
+-- Members can view movies in their rooms
+create policy "Room members can view room movies"
+  on public.room_movies for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.room_members
+      where room_members.room_id = room_movies.room_id
+      and room_members.user_id = (select auth.uid())
+    )
+  );
+
+-- Only room members can add movies, and only as themselves
+create policy "Authenticated users can add room movies"
+  on public.room_movies for insert
+  to authenticated
+  with check (
+    (select auth.uid()) = user_id
+    and exists (
+      select 1 from public.room_members
+      where room_members.room_id = room_movies.room_id
+      and room_members.user_id = (select auth.uid())
+    )
+  );
+
+-- Room members can remove their own movies from the pool
+create policy "Users can remove their own room movies"
+  on public.room_movies for delete
+  to authenticated
+  using (
+    (select auth.uid()) = user_id
+    and exists (
+      select 1 from public.room_members
+      where room_members.room_id = room_movies.room_id
+      and room_members.user_id = (select auth.uid())
+    )
+  );
 
 -- MOVIE VOTES policies
 -- Users can see votes in rooms they belong to
@@ -207,6 +301,8 @@ create policy "Users can insert matches in their rooms"
 -- ============================================
 alter publication supabase_realtime add table public.matches;
 alter publication supabase_realtime add table public.movie_votes;
+alter publication supabase_realtime add table public.room_movies;
+alter publication supabase_realtime add table public.room_members;
 
 -- ============================================
 -- 5. INDEXES
@@ -228,3 +324,15 @@ create index idx_matches_room on public.matches(room_id);
 
 -- Index on rooms.created_by for FK cascade and queries
 create index idx_rooms_created_by on public.rooms(created_by);
+
+-- Composite index for room_movies lookups by room
+create index idx_room_movies_room_id on public.room_movies(room_id);
+
+-- Index for room_movies by user
+create index idx_room_movies_user_id on public.room_movies(user_id);
+
+-- Composite index for room_movies unique lookups
+create index idx_room_movies_room_movie on public.room_movies(room_id, movie_id);
+
+-- Partial index on rooms for lobby status (used by lobby queries and guards)
+create index idx_rooms_lobby_status on public.rooms(id) where status = 'lobby';

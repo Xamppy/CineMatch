@@ -88,3 +88,33 @@ export async function getMovieDetails(movieId: number) {
 
   return response.json();
 }
+
+export async function getPopularMovies(
+  page: number = 1,
+): Promise<TMDBSearchResponse> {
+  const apiKey = getApiKey();
+  const url = `${TMDB_BASE_URL}/movie/popular?api_key=${apiKey}&page=${page}&language=es-ES`;
+
+  const response = await fetch(url, { next: { revalidate: 3600 } });
+
+  if (!response.ok) {
+    throw new Error(`TMDB popular failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getTopRatedMovies(
+  page: number = 1,
+): Promise<TMDBSearchResponse> {
+  const apiKey = getApiKey();
+  const url = `${TMDB_BASE_URL}/movie/top_rated?api_key=${apiKey}&page=${page}&language=es-ES`;
+
+  const response = await fetch(url, { next: { revalidate: 3600 } });
+
+  if (!response.ok) {
+    throw new Error(`TMDB top rated failed: ${response.status}`);
+  }
+
+  return response.json();
+}
