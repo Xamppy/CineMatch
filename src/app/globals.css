@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #4C1D95;
+  --color-primary-light: #6D28D9;
+  --color-primary-dark: #3B0764;
+  --color-secondary: #881337;
+  --color-secondary-light: #9F1239;
+  --color-secondary-dark: #4C0519;
+  --color-background: #0F0A1A;
+  --color-surface: #1A1128;
+  --color-surface-light: #251A36;
+  --color-text-primary: #F5F3FF;
+  --color-text-secondary: #A78BFA;
+  --color-text-muted: #6D5A8A;
+  --color-accent: #C084FC;
+  --color-success: #10B981;
+  --color-danger: #EF4444;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text-primary antialiased;
+  }
+}
+
+@layer components {
+  .gradient-primary {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  }
+
+  .gradient-card {
+    background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-light) 100%);
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    @apply text-white font-semibold py-3 px-6 rounded-xl
+           transition-all duration-200 hover:opacity-90 hover:scale-[1.02]
+           active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-light text-text-primary font-semibold py-3 px-6 rounded-xl
+           border border-primary/30 transition-all duration-200
+           hover:border-primary/60 hover:bg-surface active:scale-[0.98];
+  }
+
+  .input-field {
+    @apply w-full bg-surface border border-primary/20 rounded-xl px-4 py-3
+           text-text-primary placeholder:text-text-muted
+           focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30
+           transition-all duration-200;
+  }
+
+  .card {
+    background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-light) 100%);
+    @apply rounded-2xl border border-primary/10 p-6;
+  }
+}
