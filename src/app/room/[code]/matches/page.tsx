@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPosterUrl } from "@/lib/tmdb";
@@ -12,29 +12,37 @@ export default function MatchesPage() {
   const code = params.code as string;
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
+  // Fetch matches and subscribe to realtime
   useEffect(() => {
-    async function fetchMatches() {
-      const { data: room } = await supabase
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function init() {
+      const { data: room, error: roomError } = await supabase
         .from("rooms")
         .select("id")
         .eq("code", code)
         .single();
 
-      if (!room) {
+      if (roomError || !room) {
+        setError("No se pudo acceder a la sala");
         setLoading(false);
         return;
       }
 
-      const { data } = await supabase
+      const { data, error: matchesError } = await supabase
         .from("matches")
         .select("*")
         .eq("room_id", room.id)
         .order("matched_at", { ascending: false });
 
-      if (data) {
+      if (matchesError) {
+        console.error("Matches fetch error:", matchesError);
+        setError("Error al cargar los matches");
+      } else if (data) {
         setMatches(
           data.map((m) => ({
             id: m.id,
@@ -47,21 +55,9 @@ export default function MatchesPage() {
         );
       }
       setLoading(false);
-    }
 
-    fetchMatches();
-
-    // Real-time subscription for new matches
-    async function subscribeToMatches() {
-      const { data: room } = await supabase
-        .from("rooms")
-        .select("id")
-        .eq("code", code)
-        .single();
-
-      if (!room) return;
-
-      const channel = supabase
+      // Subscribe to new matches
+      channel = supabase
         .channel(`matches-list:${room.id}`)
         .on(
           "postgres_changes",
@@ -73,33 +69,47 @@ export default function MatchesPage() {
           },
           (payload) => {
             const m = payload.new;
-            setMatches((prev) => [
-              {
-                id: m.id,
-                roomId: m.room_id,
-                movieId: m.movie_id,
-                movieTitle: m.movie_title,
-                posterPath: m.poster_path,
-                matchedAt: m.matched_at,
-              },
-              ...prev,
-            ]);
+            setMatches((prev) => {
+              // Avoid duplicates
+              if (prev.some((existing) => existing.id === m.id)) return prev;
+              return [
+                {
+                  id: m.id,
+                  roomId: m.room_id,
+                  movieId: m.movie_id,
+                  movieTitle: m.movie_title,
+                  posterPath: m.poster_path,
+                  matchedAt: m.matched_at,
+                },
+                ...prev,
+              ];
+            });
           },
         )
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
 
-    subscribeToMatches();
+    init();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [code, supabase]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
         <Loader2 className="w-8 h-8 text-accent animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+        <p className="text-danger text-sm">{error}</p>
       </div>
     );
   }

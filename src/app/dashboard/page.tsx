@@ -18,11 +18,11 @@ export default function DashboardPage() {
 
     try {
       const res = await fetch("/api/rooms", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to create room");
-      const room = await res.json();
-      router.push(`/room/${room.code}`);
-    } catch {
-      setError("Error al crear la sala");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al crear la sala");
+      router.push(`/room/${data.code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al crear la sala");
       setCreating(false);
     }
   }

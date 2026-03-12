@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Search, Plus, Check, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -14,19 +14,26 @@ export default function SearchPage() {
   const [results, setResults] = useState<TMDBMovie[]>([]);
   const [loading, setLoading] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [addedMovies, setAddedMovies] = useState<Set<number>>(new Set());
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     async function fetchRoom() {
-      const { data } = await supabase
+      const { data, error: roomError } = await supabase
         .from("rooms")
         .select("id")
         .eq("code", code)
         .single();
-      if (data) setRoomId(data.id);
+
+      if (roomError || !data) {
+        setError("No se pudo acceder a la sala");
+        return;
+      }
+
+      setRoomId(data.id);
     }
     fetchRoom();
   }, [code, supabase]);
@@ -42,10 +49,11 @@ export default function SearchPage() {
       const res = await fetch(
         `/api/movies/search?q=${encodeURIComponent(q)}`,
       );
+      if (!res.ok) throw new Error("Search failed");
       const data = await res.json();
       setResults(data.results || []);
-    } catch (error) {
-      console.error("Search failed:", error);
+    } catch (err) {
+      console.error("Search failed:", err);
     } finally {
       setLoading(false);
     }
@@ -83,9 +91,17 @@ export default function SearchPage() {
       if (res.ok) {
         setAddedMovies((prev) => new Set(prev).add(movie.id));
       }
-    } catch (error) {
-      console.error("Add movie failed:", error);
+    } catch (err) {
+      console.error("Add movie failed:", err);
     }
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+        <p className="text-danger text-sm">{error}</p>
+      </div>
+    );
   }
 
   return (
