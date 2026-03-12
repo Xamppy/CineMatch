@@ -36,9 +36,7 @@ export default function RoomSwipePage() {
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [showRoulette, setShowRoulette] = useState(false);
   const [isSwiping, setIsSwiping] = useState(false);
-  const [exitDirection, setExitDirection] = useState<SwipeDirection | null>(
-    null,
-  );
+  const [exitDirection, setExitDirection] = useState<SwipeDirection>("left");
   const swipeGuard = useRef(false);
 
   const supabase = useMemo(() => createClient(), []);
@@ -215,6 +213,9 @@ export default function RoomSwipePage() {
     setIsSwiping(true);
     setExitDirection(direction);
 
+    // Advance index — this changes the key, triggering AnimatePresence exit
+    setCurrentIndex((prev) => prev + 1);
+
     const vote = direction === "right" ? "like" : "dislike";
 
     // Track as voted
@@ -249,14 +250,9 @@ export default function RoomSwipePage() {
     } catch (_err) {
       console.error("Vote failed");
     }
-
-    // Wait for exit animation before advancing
-    // (AnimatePresence onExitComplete will advance the card)
   }
 
   function handleExitComplete() {
-    setCurrentIndex((prev) => prev + 1);
-    setExitDirection(null);
     setIsSwiping(false);
     swipeGuard.current = false;
   }
@@ -282,7 +278,7 @@ export default function RoomSwipePage() {
 
   return (
     <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] px-4">
-      {currentMovie ? (
+      {currentMovie || isSwiping ? (
         <>
           {/* Card stack container */}
           <div className="relative w-full max-w-sm mx-auto aspect-[2/3]">
@@ -302,16 +298,18 @@ export default function RoomSwipePage() {
 
             {/* Current card with AnimatePresence */}
             <AnimatePresence
+              custom={exitDirection}
               mode="wait"
               onExitComplete={handleExitComplete}
             >
-              <MovieCard
-                key={currentMovie.id}
-                movie={currentMovie}
-                onSwipe={handleSwipe}
-                exitDirection={exitDirection}
-                isSwiping={isSwiping}
-              />
+              {currentMovie && (
+                <MovieCard
+                  key={currentMovie.id}
+                  movie={currentMovie}
+                  onSwipe={handleSwipe}
+                  isSwiping={isSwiping}
+                />
+              )}
             </AnimatePresence>
           </div>
 

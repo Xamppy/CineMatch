@@ -9,44 +9,14 @@ import type { SwipeDirection } from "@/types";
 interface MovieCardProps {
   movie: TMDBMovie;
   onSwipe: (direction: SwipeDirection) => void;
-  exitDirection?: SwipeDirection | null;
   isSwiping?: boolean;
 }
 
 const EXIT_X = 400;
 
-const variants = {
-  enter: {
-    x: 0,
-    opacity: 1,
-    scale: 1,
-    rotate: 0,
-    transition: { type: "spring" as const, stiffness: 300, damping: 30 },
-  },
-  idle: {
-    x: 0,
-    opacity: 1,
-    scale: 1,
-    rotate: 0,
-  },
-  exitRight: {
-    x: EXIT_X,
-    opacity: 0,
-    rotate: 15,
-    transition: { duration: 0.3, ease: "easeIn" as const },
-  },
-  exitLeft: {
-    x: -EXIT_X,
-    opacity: 0,
-    rotate: -15,
-    transition: { duration: 0.3, ease: "easeIn" as const },
-  },
-};
-
 export function MovieCard({
   movie,
   onSwipe,
-  exitDirection,
   isSwiping,
 }: MovieCardProps) {
   const x = useMotionValue(0);
@@ -58,7 +28,6 @@ export function MovieCard({
     _: unknown,
     info: { offset: { x: number }; velocity: { x: number } },
   ) {
-    // If already swiping (animation in progress), ignore
     if (isSwiping) return;
 
     const threshold = 100;
@@ -72,16 +41,21 @@ export function MovieCard({
     }
   }
 
-  // Determine the exit variant based on exitDirection
-  const exitVariant = exitDirection === "right" ? "exitRight" : "exitLeft";
-
   return (
     <motion.div
       className="absolute inset-0"
-      initial="enter"
-      animate="idle"
-      exit={exitVariant}
-      variants={variants}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1, x: 0, rotate: 0 }}
+      exit="exit"
+      variants={{
+        exit: (direction: SwipeDirection) => ({
+          x: direction === "right" ? EXIT_X : -EXIT_X,
+          opacity: 0,
+          rotate: direction === "right" ? 15 : -15,
+          transition: { duration: 0.3, ease: "easeIn" as const },
+        }),
+      }}
+      transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
       style={{ x, rotate }}
       drag={isSwiping ? false : "x"}
       dragConstraints={{ left: 0, right: 0 }}
