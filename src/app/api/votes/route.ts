@@ -33,15 +33,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the user is a member of this room before voting
-    const { data: membership, error: memberError } = await supabase
+    const { data: membership } = await supabase
       .from("room_members")
       .select("id")
       .eq("room_id", roomId)
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (memberError || !membership) {
-      console.error("Membership check failed:", memberError);
+    if (!membership) {
+      console.error("Membership check failed: user", user.id, "not in room", roomId);
       return NextResponse.json(
         { error: "No eres miembro de esta sala" },
         { status: 403 },

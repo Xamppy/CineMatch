@@ -12,6 +12,7 @@ drop policy if exists "Rooms are viewable by members" on public.rooms;
 drop policy if exists "Authenticated users can create rooms" on public.rooms;
 drop policy if exists "Rooms are viewable by authenticated users" on public.rooms;
 drop policy if exists "Room members can view other members" on public.room_members;
+drop policy if exists "Room members viewable by authenticated users" on public.room_members;
 drop policy if exists "Authenticated users can join rooms" on public.room_members;
 drop policy if exists "Users can view votes in their rooms" on public.movie_votes;
 drop policy if exists "Users can insert their own votes" on public.movie_votes;
@@ -140,18 +141,13 @@ create policy "Authenticated users can create rooms"
   with check ((select auth.uid()) = created_by);
 
 -- ROOM MEMBERS policies
--- Members of a room can see the other members in that room.
--- We also allow users to see their own membership row (for join checks).
-create policy "Room members can view other members"
+-- Any authenticated user can view room memberships.
+-- Room codes are the access control mechanism. Membership UUIDs are not
+-- sensitive. Actual sensitive data (votes, matches) has its own RLS.
+create policy "Room members viewable by authenticated users"
   on public.room_members for select
-  using (
-    (select auth.uid()) = user_id
-    or exists (
-      select 1 from public.room_members as rm
-      where rm.room_id = room_members.room_id
-      and rm.user_id = (select auth.uid())
-    )
-  );
+  to authenticated
+  using (true);
 
 -- Any authenticated user can join a room (insert themselves as a member).
 -- Max 2 members is enforced at the application level.
@@ -171,16 +167,11 @@ create policy "Users can view votes in their rooms"
     )
   );
 
--- Users can insert their own votes in rooms they belong to
+-- Users can insert their own votes (membership checked at app level)
 create policy "Users can insert their own votes"
   on public.movie_votes for insert
   with check (
     (select auth.uid()) = user_id
-    and exists (
-      select 1 from public.room_members
-      where room_members.room_id = movie_votes.room_id
-      and room_members.user_id = (select auth.uid())
-    )
   );
 
 -- Users can update their own votes (for re-voting)
