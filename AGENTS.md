@@ -4,121 +4,138 @@ Guidelines for AI agents working in this repository.
 
 ## Project Overview
 
-CineMatch is a Tinder-style movie matching app for couples. Built with Next.js (App Router), Supabase (auth + realtime + DB), TMDB API, Tailwind CSS v4, Framer Motion, and Lucide React.
+CineMatch is a Tinder-style movie matching app for couples. Built with Next.js 16 (App Router), Supabase (auth + realtime + DB), TMDB API, Tailwind CSS v4, Framer Motion, and Lucide React.
 
 ## Build / Dev / Lint Commands
 
 ```bash
-npm run dev          # Start dev server with Turbopack (port 3000)
+npm run dev          # Start dev server with Turbopack (default port 3000)
 npm run build        # Production build
 npm run start        # Start production server
-npm run lint         # Run ESLint (next lint)
+npm run lint         # ESLint via: eslint src/
 ```
 
-There is no test runner configured yet. When tests are added, they will use Vitest.
+No test runner is configured yet. When tests are added they will use Vitest. Run a single test with: `npx vitest run path/to/file.test.ts`
+
+### ESLint Configuration
+
+ESLint 9 flat config in `eslint.config.mjs`. Extends `eslint-config-next` directly (not via `@eslint/eslintrc` compat). Custom rule: `@typescript-eslint/no-unused-vars` is `"warn"` with `argsIgnorePattern: "^_"` so unused parameters prefixed with `_` do not trigger warnings.
 
 ## Tech Stack
 
-- **Framework:** Next.js 15+ with App Router (`src/app/`)
-- **Language:** TypeScript (strict mode)
-- **Styling:** Tailwind CSS v4 (CSS-first config via `@theme` in `globals.css`)
-- **Animations:** Framer Motion
-- **Icons:** Lucide React
-- **Backend:** Supabase (auth, PostgreSQL, Realtime subscriptions)
-- **External API:** TMDB (The Movie Database) — proxied through Next.js Route Handlers
+| Layer | Tool | Version |
+|-------|------|---------|
+| Framework | Next.js (App Router) | 16 |
+| Language | TypeScript (strict) | 5.9+ |
+| Styling | Tailwind CSS v4 (CSS-first `@theme`) | 4.2 |
+| Animations | Framer Motion | 12 |
+| Icons | Lucide React | 0.577+ |
+| Auth / DB / Realtime | Supabase (`@supabase/ssr`) | 2.99+ |
+| External API | TMDB (proxied through Route Handlers) | v3 |
 
 ## Project Structure
 
 ```
 src/
-├── app/                      # Next.js App Router pages and layouts
-│   ├── layout.tsx            # Root layout (fonts, metadata, global styles)
-│   ├── page.tsx              # Landing page (public)
-│   ├── globals.css           # Tailwind v4 theme + custom component classes
-│   ├── auth/                 # Authentication pages (login, register, callback)
-│   ├── dashboard/            # Room creation / join (protected)
-│   ├── room/[code]/          # Room pages (swiper, search, matches)
-│   └── api/                  # Route Handlers (movies, rooms, votes)
-├── components/ui/            # Reusable UI components
-├── lib/                      # Shared utilities and service clients
-│   ├── supabase/             # Supabase clients (client.ts, server.ts, middleware.ts)
-│   └── tmdb.ts               # TMDB API wrapper
-├── types/                    # TypeScript type definitions
-└── middleware.ts              # Next.js middleware (auth session refresh + route protection)
+├── app/                        # Next.js App Router pages & layouts
+│   ├── layout.tsx              # Root layout (Inter font, metadata)
+│   ├── page.tsx                # Landing page (public)
+│   ├── globals.css             # Tailwind v4 @theme + component classes
+│   ├── auth/                   # Login, register, OAuth callback
+│   ├── dashboard/              # Room creation / join (protected)
+│   ├── room/[code]/            # Swiper, search, matches pages
+│   └── api/                    # Route Handlers (movies, rooms, votes)
+├── components/ui/              # Reusable UI components
+├── lib/                        # Shared utilities & service clients
+│   ├── supabase/               # client.ts, server.ts, middleware.ts
+│   └── tmdb.ts                 # TMDB API wrapper
+├── types/                      # Shared TypeScript type definitions
+└── middleware.ts                # Auth guard + session refresh
 supabase/
-└── schema.sql                # Full database DDL with RLS policies
+└── schema.sql                  # Full DDL with RLS policies
 ```
 
 ## Code Style
 
 ### TypeScript
-- Strict mode enabled. Do NOT use `any` — use `unknown` and narrow.
-- Prefer interfaces for object shapes; use `type` for unions/intersections.
-- Export types from `src/types/index.ts`. Co-locate component-specific types in the component file.
-- Use `snake_case` for database column names, `camelCase` for TypeScript properties. Map between them at the data layer.
+- Strict mode is ON. Never use `any`; use `unknown` and narrow.
+- Prefer `interface` for object shapes; use `type` for unions/intersections.
+- Export shared types from `src/types/index.ts`. Co-locate component-specific types in the component file.
+- Map DB `snake_case` columns to `camelCase` TS properties at the data layer.
+- Prefix intentionally unused parameters with `_` (enforced by ESLint rule).
 
 ### Imports
-- Use the `@/*` path alias for all imports from `src/` (e.g., `import { createClient } from "@/lib/supabase/client"`).
-- Order: 1) React/Next.js, 2) third-party libraries, 3) `@/lib`, 4) `@/components`, 5) `@/types`, 6) relative imports.
-- Use named exports. Default exports are only for Next.js page/layout components.
-
-### Components
-- All interactive components must have `"use client"` directive at the top.
-- Server Components are the default — only add `"use client"` when using hooks, event handlers, or browser APIs.
-- Component files use kebab-case: `movie-card.tsx`, `match-alert.tsx`.
-- Place reusable components in `src/components/ui/`. Page-specific components live next to their page.
+- Always use the `@/*` path alias for imports from `src/` (e.g. `import { createClient } from "@/lib/supabase/client"`).
+- Order: 1) React / Next.js 2) third-party 3) `@/lib` 4) `@/components` 5) `@/types` 6) relative.
+- Use named exports everywhere. Default exports only for Next.js page/layout components.
 
 ### Formatting
 - 2-space indentation.
-- Double quotes for JSX attributes and imports.
-- Trailing commas in multi-line objects/arrays.
-- No semicolons — WAIT, this project USES semicolons. Always use semicolons.
-- Max line length: soft limit 100 chars.
+- Double quotes for all strings and JSX attributes.
+- Always use semicolons.
+- Trailing commas in multi-line objects, arrays, and parameters.
+- Soft line-length limit: 100 characters.
 
 ### Naming Conventions
-- **Files:** kebab-case (`movie-card.tsx`, `search-input.tsx`)
-- **Components:** PascalCase (`MovieCard`, `MatchAlert`)
-- **Functions/variables:** camelCase (`handleSwipe`, `roomId`)
-- **Constants:** UPPER_SNAKE_CASE for env vars and true constants (`TMDB_BASE_URL`)
-- **Database tables:** snake_case (`movie_votes`, `room_members`)
-- **API routes:** kebab-case paths (`/api/movies/search`)
+- **Files:** kebab-case (`movie-card.tsx`, `search-input.tsx`).
+- **Components:** PascalCase (`MovieCard`, `MatchAlert`).
+- **Functions / variables:** camelCase (`handleSwipe`, `roomId`).
+- **Constants:** UPPER_SNAKE_CASE for env vars and true constants (`TMDB_BASE_URL`).
+- **DB tables / columns:** snake_case (`movie_votes`, `room_members`).
+- **API routes:** kebab-case paths (`/api/movies/search`).
+
+### Components
+- Server Components are the default. Only add `"use client"` when the file uses hooks, event handlers, or browser APIs.
+- Place reusable components in `src/components/ui/`. Page-specific components live next to their page file.
 
 ### Error Handling
-- In Route Handlers: catch errors, log with `console.error`, return proper HTTP status + JSON `{ error: "message" }`.
-- In client components: use try/catch, set error state, display to user via inline messages (not alerts).
-- Never expose internal errors or stack traces to the client.
+- **Route Handlers:** catch errors, `console.error(...)`, return `{ error: "message" }` with the correct HTTP status.
+- **Client components:** try/catch, set error state, render inline error messages (never `alert()`).
+- Never expose stack traces or internal details to the client.
 
-### Supabase Patterns
-- **Browser (client components):** `import { createClient } from "@/lib/supabase/client"`
-- **Server (RSC, Route Handlers):** `import { createClient } from "@/lib/supabase/server"`
-- Always call `await createClient()` on the server side (it reads cookies asynchronously).
-- For Realtime: subscribe via `supabase.channel()` in `useEffect`, always clean up with `supabase.removeChannel()`.
+## Supabase Patterns
 
-### TMDB API
-- NEVER call the TMDB API directly from client components. Always proxy through Route Handlers in `src/app/api/movies/` to protect the API key.
-- The `TMDB_API_KEY` env var is server-only (no `NEXT_PUBLIC_` prefix).
-- Use the wrapper functions in `src/lib/tmdb.ts`.
+- **Browser:** `import { createClient } from "@/lib/supabase/client"` — call synchronously.
+- **Server (RSC / Route Handlers):** `import { createClient } from "@/lib/supabase/server"` — always `await createClient()` (reads cookies async).
+- **Realtime:** subscribe via `supabase.channel()` inside `useEffect`; always clean up with `supabase.removeChannel()` in the effect's return.
 
-### Styling
-- Use Tailwind utility classes. Custom theme tokens are defined in `src/app/globals.css` under `@theme`.
-- Color palette: `primary` (#4C1D95), `secondary` (#881337), `background` (#0F0A1A), `surface`, `accent`, `text-primary`, `text-secondary`, `text-muted`.
-- Reusable component classes: `.btn-primary`, `.btn-secondary`, `.input-field`, `.card`, `.gradient-primary`.
-- Prefer Tailwind classes over inline styles. Use `cn()` utility if class merging is needed.
+## TMDB API
 
-### Environment Variables
-- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL (public)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anonymous key (public)
-- `TMDB_API_KEY` — TMDB API key (server-only)
-- All env vars are defined in `.env.local` (gitignored).
+- NEVER call TMDB directly from client components. Proxy all requests through Route Handlers under `src/app/api/movies/` to keep the API key server-side.
+- `TMDB_API_KEY` is server-only (no `NEXT_PUBLIC_` prefix).
+- Use wrapper functions in `src/lib/tmdb.ts` (`searchMovies`, `getTrendingMovies`, `getMovieDetails`).
+
+## Styling
+
+- Tailwind utility classes first. Custom tokens are defined in `src/app/globals.css` under `@theme`.
+- Full color palette: `primary` (#4C1D95), `primary-light`, `primary-dark`, `secondary` (#881337), `secondary-light`, `secondary-dark`, `background` (#0F0A1A), `surface`, `surface-light`, `accent` (#C084FC), `text-primary`, `text-secondary`, `text-muted`, `success`, `danger`.
+- Reusable component classes: `.btn-primary`, `.btn-secondary`, `.input-field`, `.card`, `.gradient-primary`, `.gradient-card`.
+- Prefer Tailwind classes over inline styles. Use a `cn()` utility if class merging is needed.
+
+## Environment Variables
+
+| Variable | Scope | Description |
+|----------|-------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Supabase anonymous key |
+| `TMDB_API_KEY` | Server-only | TMDB API key |
+
+All defined in `.env.local` (gitignored). Use `https://`-prefixed placeholder URLs to avoid build-time validation errors from the Supabase SDK.
 
 ## Database
 
-Full schema is in `supabase/schema.sql`. Tables: `profiles`, `rooms`, `room_members`, `movie_votes`, `matches`. All tables have RLS enabled. Realtime is enabled for `matches` and `movie_votes`.
+Full schema: `supabase/schema.sql`. Tables: `profiles`, `rooms`, `room_members`, `movie_votes`, `matches`. All tables have RLS enabled. Realtime is enabled on `matches` and `movie_votes`.
 
-## Key Architectural Decisions
+## Key Architecture Decisions
 
-1. **Auth:** Supabase Auth with email/password + Google OAuth. Session refresh handled in middleware.
-2. **Rooms:** Users create rooms with 6-char codes. Rooms support exactly 2 members (enforced at app level).
-3. **Voting:** Votes are upserted. Match detection happens server-side in the `/api/votes` Route Handler.
-4. **Realtime:** Matches are broadcast via Supabase Realtime (postgres_changes on `matches` table).
+1. **Auth:** Supabase Auth (email/password + Google OAuth). Session refresh in Next.js middleware.
+2. **Rooms:** 6-char alphanumeric codes. Max 2 members enforced at application level.
+3. **Voting:** Votes are upserted (unique on `room_id, user_id, movie_id`). Match detection is server-side in `/api/votes`.
+4. **Realtime:** Clients subscribe to `postgres_changes` on the `matches` table for instant match alerts.
 5. **TMDB Proxy:** All TMDB calls go through Route Handlers to keep the API key server-side.
+
+## Known Caveats
+
+- Next.js 16 deprecates the `middleware` file convention in favor of `proxy`. The current `src/middleware.ts` still works but emits a build warning. Migration to the proxy convention is planned.
+- The `.env.local` must use valid `https://` URLs for `NEXT_PUBLIC_SUPABASE_URL` (e.g. `https://your-project.supabase.co`). Plain placeholder strings cause the Supabase SDK to throw at build time during static page prerendering.
+- No `next/image` remote patterns are configured in `next.config.ts` yet. TMDB poster images are loaded via `<img>` tags with `eslint-disable` comments for `@next/next/no-img-element`. When optimizing images, add `image.tmdb.org` to `images.remotePatterns` in the Next config.
