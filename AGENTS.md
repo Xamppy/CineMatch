@@ -136,7 +136,7 @@ All defined in `.env.local` (gitignored). Use `https://`-prefixed placeholder UR
 
 ## Database
 
-Full schema: `supabase/schema.sql`. Tables: `profiles`, `rooms`, `room_members`, `room_movies`, `movie_votes`, `matches`. All tables have RLS enabled. Realtime is enabled on `matches`, `movie_votes`, `room_movies`, and `room_members`.
+Full schema: `supabase/schema.sql`. Tables: `profiles`, `rooms`, `room_members`, `room_movies`, `movie_votes`, `matches`. All tables have RLS enabled. Realtime is enabled on `rooms`, `matches`, `movie_votes`, `room_movies`, and `room_members`.
 
 ## Key Architecture Decisions
 

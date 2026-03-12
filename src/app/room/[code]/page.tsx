@@ -1,14 +1,16 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { MovieCard } from "@/components/ui/movie-card";
 import { MatchAlert } from "@/components/ui/match-alert";
 import { MovieRoulette } from "@/components/ui/movie-roulette";
+import { getPosterUrl } from "@/lib/tmdb";
 import type { TMDBMovie } from "@/lib/tmdb";
-import type { Match } from "@/types";
-import { Loader2, Sparkles } from "lucide-react";
+import type { Match, SwipeDirection } from "@/types";
+import { Heart, Loader2, Sparkles, X } from "lucide-react";
 
 interface PoolMovie {
   movie_id: number;
@@ -33,6 +35,11 @@ export default function RoomSwipePage() {
   const [votedMovieIds, setVotedMovieIds] = useState<Set<number>>(new Set());
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [showRoulette, setShowRoulette] = useState(false);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const [exitDirection, setExitDirection] = useState<SwipeDirection | null>(
+    null,
+  );
+  const swipeGuard = useRef(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -198,15 +205,17 @@ export default function RoomSwipePage() {
     };
   }, [roomId, supabase]);
 
-  async function handleSwipe(direction: "left" | "right") {
+  async function handleSwipe(direction: SwipeDirection) {
     const movie = movies[currentIndex];
     if (!movie || !roomId) return;
 
-    const vote = direction === "right" ? "like" : "dislike";
+    // Guard against double-fire (drag + button, or rapid drags)
+    if (swipeGuard.current) return;
+    swipeGuard.current = true;
+    setIsSwiping(true);
+    setExitDirection(direction);
 
-    // Move to next card immediately for snappy UX
-    const nextIndex = currentIndex + 1;
-    setCurrentIndex(nextIndex);
+    const vote = direction === "right" ? "like" : "dislike";
 
     // Track as voted
     setVotedMovieIds((prev) => new Set(prev).add(movie.id));
@@ -240,6 +249,16 @@ export default function RoomSwipePage() {
     } catch (_err) {
       console.error("Vote failed");
     }
+
+    // Wait for exit animation before advancing
+    // (AnimatePresence onExitComplete will advance the card)
+  }
+
+  function handleExitComplete() {
+    setCurrentIndex((prev) => prev + 1);
+    setExitDirection(null);
+    setIsSwiping(false);
+    swipeGuard.current = false;
   }
 
   if (loading) {
@@ -259,11 +278,63 @@ export default function RoomSwipePage() {
   }
 
   const currentMovie = movies[currentIndex];
+  const nextMovie = movies[currentIndex + 1];
 
   return (
     <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] px-4">
       {currentMovie ? (
-        <MovieCard movie={currentMovie} onSwipe={handleSwipe} />
+        <>
+          {/* Card stack container */}
+          <div className="relative w-full max-w-sm mx-auto aspect-[2/3]">
+            {/* Next card (peeking underneath) */}
+            {nextMovie && (
+              <div className="absolute inset-0 scale-[0.95] opacity-50 rounded-2xl overflow-hidden border border-primary/5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getPosterUrl(nextMovie.poster_path, "w500")}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                />
+                <div className="absolute inset-0 bg-black/40" />
+              </div>
+            )}
+
+            {/* Current card with AnimatePresence */}
+            <AnimatePresence
+              mode="wait"
+              onExitComplete={handleExitComplete}
+            >
+              <MovieCard
+                key={currentMovie.id}
+                movie={currentMovie}
+                onSwipe={handleSwipe}
+                exitDirection={exitDirection}
+                isSwiping={isSwiping}
+              />
+            </AnimatePresence>
+          </div>
+
+          {/* Action buttons (outside card so they persist) */}
+          <div className="flex justify-center gap-8 mt-6">
+            <motion.button
+              onClick={() => handleSwipe("left")}
+              disabled={isSwiping}
+              className="w-16 h-16 rounded-full bg-surface border-2 border-danger/30 flex items-center justify-center hover:bg-danger/10 hover:border-danger/60 transition-all disabled:opacity-40 disabled:pointer-events-none"
+              whileTap={{ scale: 0.9 }}
+            >
+              <X className="w-8 h-8 text-danger" />
+            </motion.button>
+            <motion.button
+              onClick={() => handleSwipe("right")}
+              disabled={isSwiping}
+              className="w-16 h-16 rounded-full bg-surface border-2 border-success/30 flex items-center justify-center hover:bg-success/10 hover:border-success/60 transition-all disabled:opacity-40 disabled:pointer-events-none"
+              whileTap={{ scale: 0.9 }}
+            >
+              <Heart className="w-8 h-8 text-success" />
+            </motion.button>
+          </div>
+        </>
       ) : (
         <div className="text-center">
           <p className="text-text-muted">

@@ -76,9 +76,10 @@ export default function RoomLayout({
   }
 
   const isLobby = roomStatus === "lobby";
-  const isOnLobbyPage = pathname?.includes("/lobby");
 
-  // Different tabs based on room phase
+  // Show lobby tabs when room is in lobby phase.
+  // Once the room transitions to swiping/completed, always show swipe tabs
+  // even if the URL still says /lobby (the lobby page will redirect away).
   const lobbyTabs = [
     { href: `/room/${code}/lobby`, label: "Lobby", icon: ListPlus },
   ];
@@ -88,7 +89,7 @@ export default function RoomLayout({
     { href: `/room/${code}/matches`, label: "Matches", icon: Heart },
   ];
 
-  const tabs = isLobby || isOnLobbyPage ? lobbyTabs : swipeTabs;
+  const tabs = isLobby ? lobbyTabs : swipeTabs;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -106,12 +107,12 @@ export default function RoomLayout({
           {roomStatus && (
             <span
               className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                isLobby || isOnLobbyPage
+                isLobby
                   ? "bg-accent/20 text-accent"
                   : "bg-success/20 text-success"
               }`}
             >
-              {isLobby || isOnLobbyPage ? "Lobby" : "Votando"}
+              {isLobby ? "Lobby" : "Votando"}
             </span>
           )}
 

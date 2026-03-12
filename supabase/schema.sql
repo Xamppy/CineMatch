@@ -299,6 +299,7 @@ create policy "Users can insert matches in their rooms"
 -- ============================================
 -- 4. REALTIME
 -- ============================================
+alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.matches;
 alter publication supabase_realtime add table public.movie_votes;
 alter publication supabase_realtime add table public.room_movies;

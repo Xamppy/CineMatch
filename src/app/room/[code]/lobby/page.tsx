@@ -229,6 +229,27 @@ export default function LobbyPage() {
     };
   }, [roomId, supabase, code, router]);
 
+  // Polling fallback: when user is ready, poll room status every 3s
+  // in case the realtime subscription on the rooms table does not fire
+  // (e.g. rooms table not yet added to the Supabase realtime publication).
+  useEffect(() => {
+    if (!roomId || !isReady) return;
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("rooms")
+        .select("status")
+        .eq("id", roomId)
+        .single();
+
+      if (data && (data.status === "swiping" || data.status === "completed")) {
+        router.replace(`/room/${code}`);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [roomId, isReady, supabase, code, router]);
+
   // Fetch recommendations
   const fetchRecommendations = useCallback(
     async (category: RecommendCategory, page: number) => {
@@ -385,7 +406,11 @@ export default function LobbyPage() {
         if (data.members) {
           setMembers(data.members);
         }
-        // If both ready, the realtime subscription will handle the redirect
+        // If both ready, redirect immediately (don't rely solely on realtime)
+        if (data.allReady) {
+          router.replace(`/room/${code}`);
+          return;
+        }
       } else {
         setError(data.error || "Error al cambiar estado");
         setTimeout(() => setError(null), 3000);
