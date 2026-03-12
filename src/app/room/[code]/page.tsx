@@ -5,9 +5,10 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MovieCard } from "@/components/ui/movie-card";
 import { MatchAlert } from "@/components/ui/match-alert";
+import { MovieRoulette } from "@/components/ui/movie-roulette";
 import type { TMDBMovie } from "@/lib/tmdb";
 import type { Match } from "@/types";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 
 interface PoolMovie {
   movie_id: number;
@@ -30,6 +31,8 @@ export default function RoomSwipePage() {
   const [error, setError] = useState<string | null>(null);
   const [newMatch, setNewMatch] = useState<Match | null>(null);
   const [votedMovieIds, setVotedMovieIds] = useState<Set<number>>(new Set());
+  const [allMatches, setAllMatches] = useState<Match[]>([]);
+  const [showRoulette, setShowRoulette] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -139,6 +142,28 @@ export default function RoomSwipePage() {
   useEffect(() => {
     if (!roomId) return;
 
+    // Fetch existing matches
+    async function fetchMatches() {
+      const { data } = await supabase
+        .from("matches")
+        .select("*")
+        .eq("room_id", roomId);
+
+      if (data) {
+        setAllMatches(
+          data.map((m) => ({
+            id: m.id,
+            roomId: m.room_id,
+            movieId: m.movie_id,
+            movieTitle: m.movie_title,
+            posterPath: m.poster_path,
+            matchedAt: m.matched_at,
+          })),
+        );
+      }
+    }
+    fetchMatches();
+
     const channel = supabase
       .channel(`matches:${roomId}`)
       .on(
@@ -151,13 +176,18 @@ export default function RoomSwipePage() {
         },
         (payload) => {
           const m = payload.new;
-          setNewMatch({
+          const match: Match = {
             id: m.id,
             roomId: m.room_id,
             movieId: m.movie_id,
             movieTitle: m.movie_title,
             posterPath: m.poster_path,
             matchedAt: m.matched_at,
+          };
+          setNewMatch(match);
+          setAllMatches((prev) => {
+            if (prev.some((existing) => existing.id === match.id)) return prev;
+            return [...prev, match];
           });
         },
       )
@@ -244,11 +274,27 @@ export default function RoomSwipePage() {
           <p className="text-text-muted text-sm mt-2">
             ¡Revisa tus matches para ver las coincidencias!
           </p>
+          {allMatches.length > 1 && (
+            <button
+              onClick={() => setShowRoulette(true)}
+              className="btn-primary mt-4 inline-flex items-center gap-2"
+            >
+              <Sparkles className="w-5 h-5" />
+              Girar la ruleta
+            </button>
+          )}
         </div>
       )}
 
       {newMatch && (
         <MatchAlert match={newMatch} onClose={() => setNewMatch(null)} />
+      )}
+
+      {showRoulette && allMatches.length > 1 && (
+        <MovieRoulette
+          matches={allMatches}
+          onClose={() => setShowRoulette(false)}
+        />
       )}
     </div>
   );

@@ -4,7 +4,8 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPosterUrl } from "@/lib/tmdb";
-import { Heart, Loader2 } from "lucide-react";
+import { Heart, Loader2, Sparkles } from "lucide-react";
+import { MovieRoulette } from "@/components/ui/movie-roulette";
 import type { Match } from "@/types";
 
 export default function MatchesPage() {
@@ -13,6 +14,7 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showRoulette, setShowRoulette] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -121,6 +123,16 @@ export default function MatchesPage() {
         Matches ({matches.length})
       </h2>
 
+      {matches.length > 1 && (
+        <button
+          onClick={() => setShowRoulette(true)}
+          className="btn-primary w-full mb-4 flex items-center justify-center gap-2"
+        >
+          <Sparkles className="w-5 h-5" />
+          No se deciden? Giren la ruleta
+        </button>
+      )}
+
       {matches.length === 0 ? (
         <div className="text-center py-12">
           <Heart className="w-12 h-12 text-text-muted mx-auto mb-3 opacity-30" />
@@ -149,6 +161,13 @@ export default function MatchesPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {showRoulette && matches.length > 1 && (
+        <MovieRoulette
+          matches={matches}
+          onClose={() => setShowRoulette(false)}
+        />
       )}
     </div>
   );

@@ -57,4 +57,65 @@
     background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-light) 100%);
     @apply rounded-2xl border border-primary/10 p-6;
   }
+
+  /* Roulette component styles */
+  .roulette-title-gradient {
+    background: linear-gradient(135deg, var(--color-accent), var(--color-secondary-light));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .roulette-viewport {
+    background: linear-gradient(
+      180deg,
+      var(--color-surface) 0%,
+      color-mix(in srgb, var(--color-surface) 60%, var(--color-primary-dark)) 50%,
+      var(--color-surface) 100%
+    );
+    box-shadow:
+      inset 0 0 40px rgba(76, 29, 149, 0.15),
+      0 0 30px rgba(76, 29, 149, 0.1);
+  }
+
+  .roulette-mask-top {
+    background: linear-gradient(
+      to bottom,
+      var(--color-surface) 0%,
+      transparent 100%
+    );
+  }
+
+  .roulette-mask-bottom {
+    background: linear-gradient(
+      to top,
+      var(--color-surface) 0%,
+      transparent 100%
+    );
+  }
+
+  .roulette-indicator {
+    border-color: var(--color-accent);
+    box-shadow:
+      0 0 20px rgba(192, 132, 252, 0.3),
+      inset 0 0 20px rgba(192, 132, 252, 0.05);
+  }
+
+  .roulette-side-glow {
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      var(--color-accent) 50%,
+      transparent 100%
+    );
+    opacity: 0.2;
+  }
+
+  .roulette-winner-poster {
+    box-shadow:
+      0 0 20px rgba(192, 132, 252, 0.5),
+      0 0 40px rgba(192, 132, 252, 0.2);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
