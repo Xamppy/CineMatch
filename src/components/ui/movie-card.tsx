@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   motion,
   useMotionValue,
@@ -20,6 +20,7 @@ interface MovieCardProps {
 const EXIT_X = 400;
 
 export function MovieCard({ movie, onSwipe }: MovieCardProps) {
+  const exitingRef = useRef(false);
   const [exiting, setExiting] = useState(false);
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-15, 0, 15]);
@@ -32,7 +33,8 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
   const nopeOpacity = useTransform(x, [-100, 0], [1, 0]);
 
   async function triggerSwipe(direction: SwipeDirection) {
-    if (exiting) return;
+    if (exitingRef.current) return;
+    exitingRef.current = true;
     setExiting(true);
 
     const targetX = direction === "right" ? EXIT_X : -EXIT_X;
@@ -44,7 +46,7 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
     _: unknown,
     info: { offset: { x: number }; velocity: { x: number } },
   ) {
-    if (exiting) return;
+    if (exitingRef.current) return;
 
     const threshold = 100;
     const velocity = info.velocity.x;
