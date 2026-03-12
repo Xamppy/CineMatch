@@ -1,7 +1,13 @@
 "use client";
 
-import { motion, useMotionValue, useTransform } from "framer-motion";
-import { Star } from "lucide-react";
+import { useState } from "react";
+import {
+  motion,
+  useMotionValue,
+  useTransform,
+  animate,
+} from "framer-motion";
+import { Heart, Star, X } from "lucide-react";
 import { getPosterUrl } from "@/lib/tmdb";
 import type { TMDBMovie } from "@/lib/tmdb";
 import type { SwipeDirection } from "@/types";
@@ -14,54 +20,55 @@ interface MovieCardProps {
 const EXIT_X = 400;
 
 export function MovieCard({ movie, onSwipe }: MovieCardProps) {
+  const [exiting, setExiting] = useState(false);
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-15, 0, 15]);
+  const opacity = useTransform(
+    x,
+    [-EXIT_X, -200, 0, 200, EXIT_X],
+    [0, 1, 1, 1, 0],
+  );
   const likeOpacity = useTransform(x, [0, 100], [0, 1]);
   const nopeOpacity = useTransform(x, [-100, 0], [1, 0]);
+
+  async function triggerSwipe(direction: SwipeDirection) {
+    if (exiting) return;
+    setExiting(true);
+
+    const targetX = direction === "right" ? EXIT_X : -EXIT_X;
+    await animate(x, targetX, { duration: 0.3, ease: "easeIn" });
+    onSwipe(direction);
+  }
 
   function handleDragEnd(
     _: unknown,
     info: { offset: { x: number }; velocity: { x: number } },
   ) {
+    if (exiting) return;
+
     const threshold = 100;
     const velocity = info.velocity.x;
     const offset = info.offset.x;
 
     if (offset > threshold || velocity > 500) {
-      onSwipe("right");
+      triggerSwipe("right");
     } else if (offset < -threshold || velocity < -500) {
-      onSwipe("left");
+      triggerSwipe("left");
     }
   }
 
   return (
-    // Outer layer: handles AnimatePresence exit/enter only — NO drag here
-    <motion.div
-      className="absolute inset-0 pointer-events-none"
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit="exit"
-      variants={{
-        exit: (direction: SwipeDirection) => ({
-          x: direction === "right" ? EXIT_X : -EXIT_X,
-          opacity: 0,
-          rotate: direction === "right" ? 15 : -15,
-          transition: { duration: 0.3, ease: "easeIn" as const },
-        }),
-      }}
-      transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
-    >
-      {/* Inner layer: handles drag gesture — isolated from exit animation */}
+    <div className="relative w-full max-w-sm mx-auto">
+      {/* Draggable card */}
       <motion.div
-        className="h-full pointer-events-auto cursor-grab active:cursor-grabbing"
-        style={{ x, rotate }}
-        drag="x"
+        className="relative cursor-grab active:cursor-grabbing"
+        style={{ x, rotate, opacity }}
+        drag={exiting ? false : "x"}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.9}
         onDragEnd={handleDragEnd}
-        whileTap={{ scale: 1.02 }}
+        whileTap={exiting ? undefined : { scale: 1.02 }}
       >
-        {/* Card */}
         <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-primary/10">
           {/* Poster */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -111,6 +118,24 @@ export function MovieCard({ movie, onSwipe }: MovieCardProps) {
           </div>
         </div>
       </motion.div>
-    </motion.div>
+
+      {/* Action Buttons */}
+      <div className="flex justify-center gap-8 mt-6">
+        <button
+          onClick={() => triggerSwipe("left")}
+          disabled={exiting}
+          className="w-16 h-16 rounded-full bg-surface border-2 border-danger/30 flex items-center justify-center hover:bg-danger/10 hover:border-danger/60 transition-all active:scale-90 disabled:opacity-40 disabled:pointer-events-none"
+        >
+          <X className="w-8 h-8 text-danger" />
+        </button>
+        <button
+          onClick={() => triggerSwipe("right")}
+          disabled={exiting}
+          className="w-16 h-16 rounded-full bg-surface border-2 border-success/30 flex items-center justify-center hover:bg-success/10 hover:border-success/60 transition-all active:scale-90 disabled:opacity-40 disabled:pointer-events-none"
+        >
+          <Heart className="w-8 h-8 text-success" />
+        </button>
+      </div>
+    </div>
   );
 }

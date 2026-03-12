@@ -1,8 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MovieCard } from "@/components/ui/movie-card";
 import { MatchAlert } from "@/components/ui/match-alert";
@@ -10,7 +9,7 @@ import { MovieRoulette } from "@/components/ui/movie-roulette";
 import { getPosterUrl } from "@/lib/tmdb";
 import type { TMDBMovie } from "@/lib/tmdb";
 import type { Match, SwipeDirection } from "@/types";
-import { Heart, Loader2, Sparkles, X } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 
 interface PoolMovie {
   movie_id: number;
@@ -35,9 +34,6 @@ export default function RoomSwipePage() {
   const [votedMovieIds, setVotedMovieIds] = useState<Set<number>>(new Set());
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [showRoulette, setShowRoulette] = useState(false);
-  const [isSwiping, setIsSwiping] = useState(false);
-  const [exitDirection, setExitDirection] = useState<SwipeDirection>("left");
-  const lastSwipeTime = useRef(0);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -203,26 +199,18 @@ export default function RoomSwipePage() {
     };
   }, [roomId, supabase]);
 
+  // Called by MovieCard AFTER its exit animation completes
   async function handleSwipe(direction: SwipeDirection) {
     const movie = movies[currentIndex];
     if (!movie || !roomId) return;
 
-    // Time-based guard: reject swipes within 400ms of the last one
-    const now = Date.now();
-    if (now - lastSwipeTime.current < 400) return;
-    if (isSwiping) return;
-
-    lastSwipeTime.current = now;
-    setIsSwiping(true);
-    setExitDirection(direction);
-
-    // Advance index — this changes the key, triggering AnimatePresence exit
+    // Advance to next card
     setCurrentIndex((prev) => prev + 1);
-
-    const vote = direction === "right" ? "like" : "dislike";
 
     // Track as voted
     setVotedMovieIds((prev) => new Set(prev).add(movie.id));
+
+    const vote = direction === "right" ? "like" : "dislike";
 
     try {
       const res = await fetch("/api/votes", {
@@ -255,10 +243,6 @@ export default function RoomSwipePage() {
     }
   }
 
-  function handleExitComplete() {
-    setIsSwiping(false);
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
@@ -280,60 +264,31 @@ export default function RoomSwipePage() {
 
   return (
     <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] px-4">
-      {currentMovie || isSwiping ? (
-        <>
-          {/* Card stack container */}
-          <div className="relative w-full max-w-sm mx-auto aspect-[2/3]">
-            {/* Next card (peeking underneath) */}
-            {nextMovie && (
-              <div className="absolute inset-0 scale-[0.95] opacity-50 rounded-2xl overflow-hidden border border-primary/5">
+      {currentMovie ? (
+        <div className="relative">
+          {/* Next card peeking underneath */}
+          {nextMovie && (
+            <div className="absolute inset-x-0 top-0 w-full max-w-sm mx-auto scale-[0.95] opacity-40 -z-10">
+              <div className="rounded-2xl overflow-hidden border border-primary/5">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={getPosterUrl(nextMovie.poster_path, "w500")}
                   alt=""
-                  className="w-full h-full object-cover"
+                  className="w-full aspect-[2/3] object-cover"
                   draggable={false}
                 />
                 <div className="absolute inset-0 bg-black/40" />
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Current card with AnimatePresence */}
-            <AnimatePresence
-              custom={exitDirection}
-              mode="wait"
-              onExitComplete={handleExitComplete}
-            >
-              {currentMovie && (
-                <MovieCard
-                  key={currentMovie.id}
-                  movie={currentMovie}
-                  onSwipe={handleSwipe}
-                />
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Action buttons (outside card so they persist) */}
-          <div className="flex justify-center gap-8 mt-6">
-            <motion.button
-              onClick={() => handleSwipe("left")}
-              disabled={isSwiping}
-              className="w-16 h-16 rounded-full bg-surface border-2 border-danger/30 flex items-center justify-center hover:bg-danger/10 hover:border-danger/60 transition-all disabled:opacity-40 disabled:pointer-events-none"
-              whileTap={{ scale: 0.9 }}
-            >
-              <X className="w-8 h-8 text-danger" />
-            </motion.button>
-            <motion.button
-              onClick={() => handleSwipe("right")}
-              disabled={isSwiping}
-              className="w-16 h-16 rounded-full bg-surface border-2 border-success/30 flex items-center justify-center hover:bg-success/10 hover:border-success/60 transition-all disabled:opacity-40 disabled:pointer-events-none"
-              whileTap={{ scale: 0.9 }}
-            >
-              <Heart className="w-8 h-8 text-success" />
-            </motion.button>
-          </div>
-        </>
+          {/* Current card — key forces fresh instance per movie */}
+          <MovieCard
+            key={currentMovie.id}
+            movie={currentMovie}
+            onSwipe={handleSwipe}
+          />
+        </div>
       ) : (
         <div className="text-center">
           <p className="text-text-muted">
